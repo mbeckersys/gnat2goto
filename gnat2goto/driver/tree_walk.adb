@@ -1438,9 +1438,8 @@ package body Tree_Walk is
          declare
             Const_True : constant Irep := New_Irep (I_Constant_Expr);
          begin
-            --  mimic C-style 8-bit bool; this might also work with 1-bit type
-            Set_Value (Const_True, "00000001");
-            Set_Type (Const_True, Make_Int_Type (8));
+            Set_Value (Const_True, "true");
+            Set_Type (Const_True, Make_Bool_Type);
             return Do_While_Statement (Const_True);
          end;
       elsif Present (Condition (Iter_Scheme)) then
