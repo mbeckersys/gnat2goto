@@ -213,6 +213,11 @@ package body Driver is
    ------------------------------
 
    procedure Translate_Standard_Types is
+      --  enums include bools, which need a different translation
+      function Map_Enum (S : S_Types) return Irep_Kind is
+        (case S is
+            when S_Boolean => I_Bool_Type,
+            when others    => I_Unsignedbv_Type);
    begin
       --  Add primitive types to the symtab
       for Standard_Type in S_Types'Range loop
@@ -223,7 +228,7 @@ package body Driver is
               (case Ekind (Builtin_Node) is
                  when E_Floating_Point_Type    => I_Floatbv_Type,
                  when E_Signed_Integer_Subtype => I_Signedbv_Type,
-                 when E_Enumeration_Type       => I_Unsignedbv_Type,
+                 when E_Enumeration_Type       => Map_Enum (Standard_Type),
                  when others                   => I_Empty);
 
          begin
@@ -236,7 +241,9 @@ package body Driver is
                     UI_To_Int (Esize (Builtin_Node));
 
                begin
-                  Set_Width (Type_Irep, Integer (Esize_Width));
+                  if Type_Kind in Class_Bitvector_Type then
+                     Set_Width (Type_Irep, Integer (Esize_Width));
+                  end if;
 
                   if Type_Kind = I_Floatbv_Type then
                      --  Ada's floating-point types are interesting, as they're

@@ -67,6 +67,14 @@ package body Tree_Walk is
    with Pre => Nkind (N) = N_Integer_Literal,
         Post => Kind (Do_Constant'Result) = I_Constant_Expr;
 
+   function Do_True (N : Node_Id) return Irep
+   with Pre => Nkind (N) = N_Identifier,
+        Post => Kind (Do_True'Result) = I_Constant_Expr;
+
+   function Do_False (N : Node_Id) return Irep
+   with Pre => Nkind (N) = N_Identifier,
+        Post => Kind (Do_False'Result) = I_Constant_Expr;
+
    function Do_Constrained_Array_Definition (N : Node_Id) return Irep
    with Pre  => Nkind (N) in N_Array_Type_Definition,
         Post => Kind (Do_Constrained_Array_Definition'Result) = I_Struct_Type;
@@ -955,6 +963,24 @@ package body Tree_Walk is
       return Ret;
    end Do_Constant;
 
+   -------------
+   --  Do_True
+   -------------
+
+   function Do_True (N : Node_Id) return Irep is
+     (Make_Constant_Expr (Value => "true",
+                          I_Type => Make_Bool_Type,
+                          Source_Location => Sloc (N)));
+
+   -------------
+   --  Do_False
+   -------------
+
+   function Do_False (N : Node_Id) return Irep is
+     (Make_Constant_Expr (Value => "false",
+                          I_Type => Make_Bool_Type,
+                          Source_Location => Sloc (N)));
+
    -------------------------------------
    -- Do_Constrained_Array_Definition --
    -------------------------------------
@@ -978,7 +1004,6 @@ package body Tree_Walk is
         (if Is_Out_Param
          then Make_Pointer_Type (Result_Type)
          else Result_Type);
-
    begin
       Set_Source_Location (Sym, Sloc (E));
       Set_Identifier      (Sym, Unique_Name (E));
@@ -1182,6 +1207,17 @@ package body Tree_Walk is
          --  this is used for discriminants during record init.
          return Identifier_Maps.Element (Subst_Cursor);
       else
+         declare
+            id : constant String := Unique_Name (E);
+         begin
+            --  etype = n_defining_identifier "boolean"
+            --  entity = n_defining_identifier "true"
+            if id = "standard__boolean__true" then
+               return Do_True (N);
+            elsif id = "standard__boolean__false" then
+               return Do_False (N);
+            end if;
+         end;
          return Do_Defining_Identifier (E);
       end if;
    end Do_Identifier;
@@ -1969,20 +2005,33 @@ package body Tree_Walk is
 
    begin
       Set_Source_Location (Ret, Sloc (N));
-      Set_Lhs (Ret, LHS);
-      Set_Rhs (Ret, RHS);
-      Set_Type (Ret, Do_Type_Reference (Etype (N)));
+      if Op_Kind in Class_Binary_Expr then
+         Set_Lhs (Ret, LHS);
+         Set_Rhs (Ret, RHS);
 
-      if Do_Overflow_Check (N) then
-         Set_Overflow_Check (Ret, True);
+         Set_Type (Ret, Do_Type_Reference (Etype (N)));
+
+         if Do_Overflow_Check (N) then
+            Set_Overflow_Check (Ret, True);
+         end if;
+
+         if Nkind (N) in N_Op_Divide | N_Op_Mod | N_Op_Rem
+           and then Do_Division_Check (N)
+         then
+            Set_Div_By_Zero_Check (Ret, True);
+         end if;
+
+      elsif Op_Kind in Class_Nary_Expr then
+         --  N_OP_OR, N_OP_AND go here (lists)
+
+         Append_Op (Ret, LHS);
+         Append_Op (Ret, RHS);
+         Set_Type (Ret, Do_Type_Reference (Etype (N)));
+         --  no checks required
+      else
+         Print_Tree_Node (N);
+         raise Program_Error;
       end if;
-
-      if Nkind (N) in N_Op_Divide | N_Op_Mod | N_Op_Rem
-        and then Do_Division_Check (N)
-      then
-         Set_Div_By_Zero_Check (Ret, True);
-      end if;
-
       return Ret;
    end Do_Operator_Simple;
 
