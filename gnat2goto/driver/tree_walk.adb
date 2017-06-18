@@ -1954,8 +1954,6 @@ package body Tree_Walk is
    ------------------------
 
    function Do_Operator_Simple (N : Node_Id) return Irep is
-      LHS : constant Irep := Do_Expression (Left_Opnd (N));
-      RHS : constant Irep := Do_Expression (Right_Opnd (N));
 
       function Op_To_Kind (N : N_Op) return Irep_Kind;
 
@@ -1981,9 +1979,10 @@ package body Tree_Walk is
                when N_Op_Gt       => I_Op_Gt,
                when N_Op_Le       => I_Op_Leq,
                when N_Op_Lt       => I_Op_Lt,
+               when N_Op_Not      => I_Op_Not,
                when N_Op_Concat
                   | N_Op_Expon
-                  | N_Op_Xor
+                  | N_Op_Xor -- TODO: no irep, yet.
                   | N_Op_Rotate_Left
                   | N_Op_Rotate_Right
                   | N_Op_Shift_Left
@@ -1991,7 +1990,6 @@ package body Tree_Walk is
                   | N_Op_Shift_Right_Arithmetic
                   | N_Op_Abs
                   | N_Op_Minus
-                  | N_Op_Not
                   | N_Op_Plus
           =>
              raise Program_Error);
@@ -2004,29 +2002,47 @@ package body Tree_Walk is
 
    begin
       Set_Source_Location (Ret, Sloc (N));
-      if Op_Kind in Class_Binary_Expr then
-         Set_Lhs (Ret, LHS);
-         Set_Rhs (Ret, RHS);
+      if Op_Kind in Class_Unary_Expr then
+         declare
+            --  TODO: are unary ops always prefixes?
+            RHS : constant Irep := Do_Expression (Right_Opnd (N));
+         begin
+            Set_Op0 (Ret, RHS);
+            Set_Type (Ret, Do_Type_Reference (Etype (N)));
+         end;
 
-         Set_Type (Ret, Do_Type_Reference (Etype (N)));
+      elsif Op_Kind in Class_Binary_Expr then
+         declare
+            LHS : constant Irep := Do_Expression (Left_Opnd (N));
+            RHS : constant Irep := Do_Expression (Right_Opnd (N));
+         begin
+            Set_Lhs (Ret, LHS);
+            Set_Rhs (Ret, RHS);
 
-         if Do_Overflow_Check (N) then
-            Set_Overflow_Check (Ret, True);
-         end if;
+            Set_Type (Ret, Do_Type_Reference (Etype (N)));
 
-         if Nkind (N) in N_Op_Divide | N_Op_Mod | N_Op_Rem
-           and then Do_Division_Check (N)
-         then
-            Set_Div_By_Zero_Check (Ret, True);
-         end if;
+            if Do_Overflow_Check (N) then
+               Set_Overflow_Check (Ret, True);
+            end if;
+
+            if Nkind (N) in N_Op_Divide | N_Op_Mod | N_Op_Rem
+              and then Do_Division_Check (N)
+            then
+               Set_Div_By_Zero_Check (Ret, True);
+            end if;
+         end;
 
       elsif Op_Kind in Class_Nary_Expr then
-         --  N_OP_OR, N_OP_AND go here (lists)
+         declare
+            LHS : constant Irep := Do_Expression (Left_Opnd (N));
+            RHS : constant Irep := Do_Expression (Right_Opnd (N));
+         begin
+            Append_Op (Ret, LHS);
+            Append_Op (Ret, RHS);
+            Set_Type (Ret, Do_Type_Reference (Etype (N)));
+            --  no checks required
+         end;
 
-         Append_Op (Ret, LHS);
-         Append_Op (Ret, RHS);
-         Set_Type (Ret, Do_Type_Reference (Etype (N)));
-         --  no checks required
       else
          Print_Tree_Node (N);
          raise Program_Error;

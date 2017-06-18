@@ -8,7 +8,21 @@ Partial Inlining
 Generic Property Instrumentation
 Starting Bounded Model Checking
 
-simple slicing removed 0 assignments
-Generated 0 VCC(s), 0 remaining after simplification
+simple slicing removed 3 assignments
+Generated 1 VCC(s), 1 remaining after simplification
+Passing problem to propositional reduction
+converting SSA
+Running propositional reduction
+Post-processing
+Solving with MiniSAT 2.2.1 with simplifier
+97 variables, 0 clauses
+SAT checker inconsistent: instance is UNSATISFIABLE
+Runtime decision procedure: 0s
+
+** Results:
+[overflow.1] arithmetic overflow on signed + in ifthenelse__a + ifthenelse__b: SUCCESS
+[overflow.2] arithmetic overflow on signed - in ifthenelse__a - ifthenelse__b: SUCCESS
+
+** 0 of 2 failed (1 iteration)
 VERIFICATION SUCCESSFUL
 
