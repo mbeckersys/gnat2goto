@@ -71,6 +71,134 @@ package body Driver is
       Initial_Call      : constant Irep := New_Irep (I_Code_Function_Call);
       Initial_Call_Args : constant Irep := New_Irep (I_Argument_List);
 
+      procedure Inline_TypeRefs (jentry  : in out JSON_Array;
+                                 jsymtab : JSON_Array);
+      --  Removes all type indirections, i.e., those types that are
+      --  defined as symbol.
+
+      procedure Inline_TypeRefs (jentry  : in out JSON_Array;
+                                 jsymtab : JSON_Array) is
+
+         ----------------
+         --  Is_Type_Def
+         ----------------
+
+         function Is_Type_Def (jentry : JSON_Value) return Boolean is
+           (jentry.Has_Field ("is_type") and then jentry.Get ("is_type"));
+
+         ----------------
+         --  Lookup_Type
+         ----------------
+
+         function Lookup_Type (id : String; jsymtab : JSON_Array)
+                               return JSON_Value with Pre => id'Length > 0;
+         --  Find type def for given indentifier in symbol table, and return
+         --  a copy of the "type" subtree
+
+         function Lookup_Type (id : String; jsymtab : JSON_Array)
+                               return JSON_Value is
+            val : JSON_Value;
+         begin
+            --  FIXME: slow linear search
+            Search_Loop :
+            for i in 1 .. Length (jsymtab) loop
+               declare
+                  tmp : constant JSON_Value := Get (jsymtab, i);
+               begin
+                  if Is_Type_Def (tmp) and then tmp.Get ("name") = id then
+                     val := tmp.Get ("type").Clone;
+                     exit Search_Loop;
+                  end if;
+               end;
+            end loop Search_Loop;
+            return val;
+         end Lookup_Type;
+
+         ----------------------
+         --  Do_TypeRef_Inline
+         ----------------------
+
+         procedure Do_TypeRef_Inline (val : in out JSON_Value;
+                                      jsymtab : JSON_Array) with
+           Pre => val.Has_Field ("type") and then
+                  val.Get ("type").Has_Field ("id");
+         --  Replace potential Type Refs by a copy of type def
+
+         procedure Do_TypeRef_Inline (val : in out JSON_Value;
+                                     jsymtab : JSON_Array) is
+            Sym_Type  : constant JSON_Value := val.Get ("type");
+            Real_Type : JSON_Value;
+         begin
+            if Sym_Type.Get ("id") = "symbol" then
+               declare
+                  Real_ID : constant String :=
+                    Sym_Type.Get ("namedSub").Get ("identifier").Get ("id");
+               begin
+                  Real_Type := Lookup_Type (Real_ID, jsymtab);
+                  pragma Assert (not Real_Type.Is_Empty);
+               end;
+               --  val.Set_Field ("oldtype", val.Get ("type").Clone);
+               val.Unset_Field ("type");
+               val.Set_Field ("type", Real_Type);
+            end if;
+         end Do_TypeRef_Inline;
+
+      begin
+         --  FIXME: is there no Find_All() support in GNATColl?
+         for i in 1 .. Length (jentry) loop
+            declare
+               val : JSON_Value := Get (jentry, i);
+            begin
+               if val.Kind = JSON_Array_Type then
+                  declare
+                     jarr : JSON_Array := Get (val);
+                  begin
+                     Inline_TypeRefs (jentry => jarr, jsymtab => jsymtab);
+                  end;
+               end if;
+               if val.Has_Field ("sub") then
+                  declare
+                     jarr : JSON_Array := val.Get ("sub");
+                  begin
+                     Inline_TypeRefs (jentry => jarr, jsymtab => jsymtab);
+                  end;
+               end if;
+               if val.Has_Field ("namedSub") then
+                  declare
+                     subval : JSON_Value := val.Get ("namedSub");
+                  begin
+                     if subval.Has_Field ("type") then
+                        Do_TypeRef_Inline (subval, jsymtab);
+                     end if;
+                  end;
+               end if;
+               if val.Has_Field ("value") then
+                  if val.Get ("value").Has_Field ("sub") then
+                     declare
+                        valsub : JSON_Array := val.Get ("value").Get ("sub");
+                     begin
+                        Inline_TypeRefs (jentry => valsub, jsymtab => jsymtab);
+                     end;
+                  end if;
+                  if val.Get ("value").Has_Field ("namedSub") then
+                     declare
+                        subval : JSON_Value :=
+                          val.Get ("value").Get ("namedSub");
+                     begin
+                        if subval.Has_Field ("type") then
+                           Do_TypeRef_Inline (subval, jsymtab);
+                        end if;
+                     end;
+                  end if;
+               end if;
+               --  FIXME: what about return_type?
+               if val.Has_Field ("type") and then not Is_Type_Def (val) then
+                  Do_TypeRef_Inline (val, jsymtab);
+               end if;
+            end;
+         end loop;
+      end Inline_TypeRefs;
+
    begin
       --  Gather local symbols and put them in the symtab
       declare
@@ -190,7 +318,19 @@ package body Driver is
 
       Global_Symbol_Table.Insert (Start_Name, Start_Symbol);
 
-      Put_Line (Create (SymbolTable2Json (Global_Symbol_Table)).Write);
+      --  Workaround/MBe: we intervene before serialization and
+      --  remove the typerefs here (cbmc support missing). This
+      --  workaround can be removed once cbmc has support for this.
+      --  FIXME: might fail when multiple compilation units
+      --  are present, whereas A defines type and B uses it.
+      --  in such a case, we could only inline stuff after all units
+      --  have generated their JSON_Array
+      declare
+         jarr : JSON_Array := SymbolTable2Json (Global_Symbol_Table);
+      begin
+         Inline_TypeRefs (jentry => jarr, jsymtab => jarr);
+         Put_Line (Create (jarr).Write);
+      end;
    end Translate_Compilation_Unit;
 
    function Is_Back_End_Switch (Switch : String) return Boolean is
