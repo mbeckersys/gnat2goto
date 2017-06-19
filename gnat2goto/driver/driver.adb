@@ -71,13 +71,18 @@ package body Driver is
       Initial_Call      : constant Irep := New_Irep (I_Code_Function_Call);
       Initial_Call_Args : constant Irep := New_Irep (I_Argument_List);
 
-      procedure Inline_TypeRefs (jentry  : in out JSON_Array;
-                                 jsymtab : JSON_Array);
+      procedure Parent_Map_JSON_Object is new
+        Gen_Map_JSON_Object (Mapped => JSON_Value);
+
+      --------------------
+      --  Inline_TypeRefs
+      --------------------
+
+      procedure Inline_TypeRefs (jsymtab : JSON_Array);
       --  Removes all type indirections, i.e., those types that are
       --  defined as symbol.
 
-      procedure Inline_TypeRefs (jentry  : in out JSON_Array;
-                                 jsymtab : JSON_Array) is
+      procedure Inline_TypeRefs (jsymtab : JSON_Array) is
 
          ----------------
          --  Is_Type_Def
@@ -91,12 +96,12 @@ package body Driver is
          ----------------
 
          function Lookup_Type (id : String; jsymtab : JSON_Array)
-                               return JSON_Value with Pre => id'Length > 0;
+                            return JSON_Value with Pre => id'Length > 0;
          --  Find type def for given indentifier in symbol table, and return
          --  a copy of the "type" subtree
 
          function Lookup_Type (id : String; jsymtab : JSON_Array)
-                               return JSON_Value is
+                            return JSON_Value is
             val : JSON_Value;
          begin
             --  FIXME: slow linear search
@@ -121,11 +126,11 @@ package body Driver is
          procedure Do_TypeRef_Inline (val : in out JSON_Value;
                                       jsymtab : JSON_Array) with
            Pre => val.Has_Field ("type") and then
-                  val.Get ("type").Has_Field ("id");
+           val.Get ("type").Has_Field ("id");
          --  Replace potential Type Refs by a copy of type def
 
          procedure Do_TypeRef_Inline (val : in out JSON_Value;
-                                     jsymtab : JSON_Array) is
+                                      jsymtab : JSON_Array) is
             Sym_Type  : constant JSON_Value := val.Get ("type");
             Real_Type : JSON_Value;
          begin
@@ -143,59 +148,56 @@ package body Driver is
             end if;
          end Do_TypeRef_Inline;
 
+         --------------
+         --  Do_Value
+         --------------
+
+         procedure Do_Value (Parent_Value : in out JSON_Value;
+                             Name : UTF8_String;
+                             Value : JSON_Value);
+         --  process one JSON value; recurse into children
+
+         procedure Do_Value (Parent_Value : in out JSON_Value;
+                             Name : UTF8_String;
+                             Value : JSON_Value) is
+            Next_Parent : JSON_Value := Value;
+         begin
+            --  recursion:
+            case Kind (Value) is
+
+            when JSON_Array_Type =>
+               declare
+                  Child_Array : constant JSON_Array := Get (Val => Value);
+                  Child_Value : JSON_Value;
+                  Array_Length : constant Natural := Length (Child_Array);
+               begin
+                  for J in 1 .. Array_Length loop
+                     Child_Value := Get (Child_Array, J);
+                     Do_Value (Next_Parent, "", Child_Value);
+                  end loop;
+               end;
+
+            when JSON_Object_Type =>
+               Parent_Map_JSON_Object (Val => Value,
+                                       CB  => Do_Value'Access,
+                                       User_Object => Next_Parent);
+            when others =>
+               null;
+            end case;
+
+            --  FIXME: what about return type?
+            if Name = "type" and then
+              not Parent_Value.Is_Empty and then
+              not Is_Type_Def (Parent_Value)
+            then
+               Do_TypeRef_Inline (Parent_Value, jsymtab);
+            end if;
+         end Do_Value;
+
+         Empty_Value : JSON_Value;
       begin
-         --  FIXME: is there no Find_All() support in GNATColl?
-         for i in 1 .. Length (jentry) loop
-            declare
-               val : JSON_Value := Get (jentry, i);
-            begin
-               if val.Kind = JSON_Array_Type then
-                  declare
-                     jarr : JSON_Array := Get (val);
-                  begin
-                     Inline_TypeRefs (jentry => jarr, jsymtab => jsymtab);
-                  end;
-               end if;
-               if val.Has_Field ("sub") then
-                  declare
-                     jarr : JSON_Array := val.Get ("sub");
-                  begin
-                     Inline_TypeRefs (jentry => jarr, jsymtab => jsymtab);
-                  end;
-               end if;
-               if val.Has_Field ("namedSub") then
-                  declare
-                     subval : JSON_Value := val.Get ("namedSub");
-                  begin
-                     if subval.Has_Field ("type") then
-                        Do_TypeRef_Inline (subval, jsymtab);
-                     end if;
-                  end;
-               end if;
-               if val.Has_Field ("value") then
-                  if val.Get ("value").Has_Field ("sub") then
-                     declare
-                        valsub : JSON_Array := val.Get ("value").Get ("sub");
-                     begin
-                        Inline_TypeRefs (jentry => valsub, jsymtab => jsymtab);
-                     end;
-                  end if;
-                  if val.Get ("value").Has_Field ("namedSub") then
-                     declare
-                        subval : JSON_Value :=
-                          val.Get ("value").Get ("namedSub");
-                     begin
-                        if subval.Has_Field ("type") then
-                           Do_TypeRef_Inline (subval, jsymtab);
-                        end if;
-                     end;
-                  end if;
-               end if;
-               --  FIXME: what about return_type?
-               if val.Has_Field ("type") and then not Is_Type_Def (val) then
-                  Do_TypeRef_Inline (val, jsymtab);
-               end if;
-            end;
+         for i in 1 .. Length (jsymtab) loop
+            Do_Value (Empty_Value, "", Get (jsymtab, i));
          end loop;
       end Inline_TypeRefs;
 
@@ -326,10 +328,11 @@ package body Driver is
       --  in such a case, we could only inline stuff after all units
       --  have generated their JSON_Array
       declare
-         jarr : JSON_Array := SymbolTable2Json (Global_Symbol_Table);
+         jsymtab : constant JSON_Array :=
+           SymbolTable2Json (Global_Symbol_Table);
       begin
-         Inline_TypeRefs (jentry => jarr, jsymtab => jarr);
-         Put_Line (Create (jarr).Write);
+         Inline_TypeRefs (jsymtab);
+         Put_Line (Create (jsymtab).Write);
       end;
    end Translate_Compilation_Unit;
 
