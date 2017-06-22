@@ -955,11 +955,11 @@ package body Tree_Walk is
    function Do_Constant (N : Node_Id) return Irep is
       Ret           : constant Irep := New_Irep (I_Constant_Expr);
       Constant_Type : constant Irep := Do_Type_Reference (Etype (N));
+      W : constant Int := UI_To_Int (Esize (Etype (N)));
    begin
       Set_Source_Location (Ret, Sloc (N));
       Set_Type (Ret, Constant_Type);
-      --  ??? FIXME
-      Set_Value (Ret, Convert_Uint_To_Binary (Intval (N), 32));
+      Set_Value (Ret, Convert_Uint_To_Binary (Intval (N), W));
       return Ret;
    end Do_Constant;
 
@@ -1134,6 +1134,7 @@ package body Tree_Walk is
             when N_Aggregate            => Do_Aggregate_Literal (N),
             when N_Indexed_Component    => Do_Indexed_Component (N),
             when N_Slice                => Do_Slice (N),
+            --  TODO: N_Real_Literal
             when others                 => raise Program_Error);
    end Do_Expression;
 

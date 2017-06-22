@@ -11,6 +11,8 @@ package Uint_To_Binary is
        Input >= -(UI_From_Int (2) ** (UI_From_Int (Width) - UI_From_Int (1)))
          and then
        Input < UI_From_Int (2) ** UI_From_Int (Width);
+   --  Converts int|uint into a string representing binary two's complement,
+   --  whereas MSB is at lower index.
    --  This handles both signed and unsigned types, hence the bound of 2 **
    --  width not 2 ** (width - 1) as might be expected.
 
