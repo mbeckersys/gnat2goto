@@ -231,28 +231,30 @@ package body Driver is
       --  FIXME: bounding unsigned?
 
       ---------------------------
-      -- Make_Untyped_Constant --
+      -- Make_Bitvector_Constant --
       ---------------------------
 
-      function Make_Untyped_Constant (N : Node_Id) return Irep with
-        Post => Kind (Make_Untyped_Constant'Result) = I_Constant_Expr;
-      --  creates an irep that holds a constant without type being set.
-      --  This is necessary for the bounds of the standard types, as
-      --  otherwise there is a recursive definition (bound's type
+      function Make_Bitvector_Constant (N : Node_Id) return Irep with
+        Post => Kind (Make_Bitvector_Constant'Result) = I_Constant_Expr;
+      --  creates an irep that holds a constant of cbmc built-in type.
+      --  (e.g., bitvector).
+      --  This is necessary to set the bounds of the standard types, as
+      --  otherwise there would be a recursive definition (bound's type
       --  depends on type that is being defined right here)
-      --  Bounds in typedefs simply should not have types themselves.
 
-      function Make_Untyped_Constant (N : Node_Id) return Irep is
+      function Make_Bitvector_Constant (N : Node_Id) return Irep is
          Ret : constant Irep := New_Irep (I_Constant_Expr);
+         W   : constant Int  := UI_To_Int (Esize (Etype (N)));
       begin
          if Nkind (N) = N_Integer_Literal then
             Set_Value (Ret, Convert_Uint_To_Binary
-                       (Intval (N), UI_To_Int (Esize (Etype (N)))));
+                       (Intval (N), W));
+            Set_Type (Ret, Make_Signedbv_Type (Ireps.Empty, Integer (W)));
          else
             raise Program_Error; -- unsupported
          end if;
          return Ret;
-      end Make_Untyped_Constant;
+      end Make_Bitvector_Constant;
 
    begin
       --  Add primitive types to the symtab
@@ -281,16 +283,16 @@ package body Driver is
                   if Type_Kind in Class_Bitvector_Type then
                      Set_Width (Type_Irep, Integer (Esize_Width));
 
-                     --  Natural and Positive are signed types; need set bounds
-                     --  Although this is useless, since cbmc ignores them.
+                     --  Natural and Positive are signed types; need to set
+                     --  bounds to enable range checks
                      if Present (Scalar_Range (Builtin_Node)) and then
                        Type_Kind = I_Bounded_Signedbv_Type
                        --  TODO: missing support for Reals and unsigned bounds
                      then
                         declare
-                           LB : constant Irep := Make_Untyped_Constant
+                           LB : constant Irep := Make_Bitvector_Constant
                              (Low_Bound (Scalar_Range (Builtin_Node)));
-                           UB : constant Irep := Make_Untyped_Constant
+                           UB : constant Irep := Make_Bitvector_Constant
                              (High_Bound (Scalar_Range (Builtin_Node)));
                         begin
                            Set_Lower_Bound (Type_Irep, LB);

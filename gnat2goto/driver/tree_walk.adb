@@ -2358,12 +2358,31 @@ package body Tree_Walk is
    --------------------------------
 
    function Do_Simple_Return_Statement (N : Node_Id) return Irep is
-      Expr : constant Node_Id := Expression (N);
-      R    : constant Irep := New_Irep (I_Code_Return);
+      Expr     : constant Node_Id := Expression (N);
+      R        : constant Irep := New_Irep (I_Code_Return);
+
+      Ent      : constant Node_Id   := Return_Statement_Entity (N);
+      Sub_Ent  : constant Entity_Id := Etype (Return_Applies_To (Ent));
+      Ret_Type : constant Irep := Do_Type_Reference (Sub_Ent);
+
    begin
       Set_Source_Location (R, Sloc (N));
       if Present (Expr) then
-         Set_Return_Value (R, Do_Expression (Expr));
+         declare
+            Irep_Expr : constant Irep := Do_Expression (Expr);
+            Wrap : Irep;
+         begin
+            if Do_Range_Check (Expr) then
+               --  Implicit typecast. Make it explicit.
+               Wrap := New_Irep (I_Op_Typecast);
+               Set_Op0 (Wrap, Irep_Expr);
+               Set_Type (Wrap, Ret_Type);
+               Set_Range_Check (Wrap, True);
+            else
+               Wrap := Irep_Expr;
+            end if;
+            Set_Return_Value (R, Wrap);
+         end;
       end if;
       return R;
    end Do_Simple_Return_Statement;
