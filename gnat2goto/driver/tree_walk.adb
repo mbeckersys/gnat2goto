@@ -1678,7 +1678,20 @@ package body Tree_Walk is
       Append_Op (Block, Decl);
 
       if Has_Init_Expression (N) then
-         Init_Expr := Do_Expression (Expression (N));
+         declare
+            RHS : constant Irep := Do_Expression (Expression (N));
+         begin
+            if Do_Range_Check (Expression (N)) then
+               --  Implicit typecast. Make it explicit.
+               Init_Expr := New_Irep (I_Op_Typecast);
+               Set_Op0 (Init_Expr, RHS);
+               Set_Type (Init_Expr, Get_Type (Id));
+               Set_Range_Check (Init_Expr, True);
+            else
+               Init_Expr := RHS;
+            end if;
+         end;
+
       elsif Needs_Default_Initialisation (Etype (Defined)) then
          declare
             Defn : constant Node_Id := Object_Definition (N);
