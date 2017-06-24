@@ -2031,12 +2031,24 @@ package body Tree_Walk is
             RHS : constant Irep := Do_Expression (Right_Opnd (N));
          begin
             Set_Lhs (Ret, LHS);
-            Set_Rhs (Ret, RHS);
-
             Set_Type (Ret, Do_Type_Reference (Etype (N)));
 
             if Do_Overflow_Check (N) then
                Set_Overflow_Check (Ret, True);
+            end if;
+
+            if Do_Range_Check (N) then
+               --  Implicit typecast. Make it explicit.
+               declare
+                  Cast_RHS : constant Irep := New_Irep (I_Op_Typecast);
+               begin
+                  Set_Op0 (Cast_RHS, RHS);
+                  Set_Type (Cast_RHS, Get_Type (LHS));
+                  Set_Range_Check (Cast_RHS, True);
+                  Set_Rhs (Ret, Cast_RHS);
+               end;
+            else
+               Set_Rhs (Ret, RHS);
             end if;
 
             if Nkind (N) in N_Op_Divide | N_Op_Mod | N_Op_Rem
