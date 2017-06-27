@@ -63,6 +63,10 @@ package body Tree_Walk is
    with Pre => Nkind (N) = N_Case_Expression,
         Post => Kind (Do_Case_Expression'Result) = I_Let_Expr;
 
+   function Do_Bitv_Constant (N : Node_Id) return Irep
+   with Pre => Nkind (N) = N_Integer_Literal,
+        Post => Kind (Do_Bitv_Constant'Result) = I_Constant_Expr;
+
    function Do_Constant (N : Node_Id) return Irep
    with Pre => Nkind (N) = N_Integer_Literal,
         Post => Kind (Do_Constant'Result) = I_Constant_Expr;
@@ -779,8 +783,10 @@ package body Tree_Walk is
    begin
       return R : constant Irep := New_Irep (I_Bounded_Signedbv_Type) do
          Set_Width (R, Get_Width (Resolved_Underlying));
-         Set_Lower_Bound (R, Do_Constant (Low_Bound (Range_Expr)));
-         Set_Upper_Bound (R, Do_Constant (High_Bound (Range_Expr)));
+         --  Set_Lower_Bound (R, Do_Constant (Low_Bound (Range_Expr)));
+         --  Set_Upper_Bound (R, Do_Constant (High_Bound (Range_Expr)));
+         Set_Lower_Bound (R, Do_Bitv_Constant (Low_Bound (Range_Expr)));
+         Set_Upper_Bound (R, Do_Bitv_Constant (High_Bound (Range_Expr)));
       end return;
    end Do_Bare_Range_Constraint;
 
@@ -962,6 +968,24 @@ package body Tree_Walk is
       Set_Value (Ret, Convert_Uint_To_Binary (Intval (N), W));
       return Ret;
    end Do_Constant;
+
+   ----------------------
+   -- Do_Bitv_Constant --
+   ----------------------
+
+   function Do_Bitv_Constant (N : Node_Id) return Irep is
+      Ret            : constant Irep := New_Irep (I_Constant_Expr);
+      Bitvector_Type : constant Irep := New_Irep (I_Signedbv_Type);
+      --  FIXME: shouldn't that be the width of the underlying type
+      W : constant Int := UI_To_Int (Esize (Etype (N)));
+   begin
+      Set_Width (Bitvector_Type, Integer (W));
+
+      Set_Source_Location (Ret, Sloc (N));
+      Set_Type (Ret, Bitvector_Type);
+      Set_Value (Ret, Convert_Uint_To_Binary (Intval (N), W));
+      return Ret;
+   end Do_Bitv_Constant;
 
    -------------
    --  Do_True

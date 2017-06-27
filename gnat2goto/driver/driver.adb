@@ -199,7 +199,13 @@ package body Driver is
          Empty_Value : JSON_Value;
       begin
          for i in 1 .. Length (jsymtab) loop
-            Do_Value (Empty_Value, "", Get (jsymtab, i));
+            declare
+               val : constant JSON_Value := Get (jsymtab, i);
+            begin
+               if not Is_Type_Def (val) then
+                  Do_Value (Empty_Value, "", val);
+               end if;
+            end;
          end loop;
       end Inline_TypeRefs;
 
@@ -392,6 +398,8 @@ package body Driver is
          if Nkind (N) = N_Integer_Literal then
             Set_Value (Ret, Convert_Uint_To_Binary
                        (Intval (N), W));
+            --  not setting a type here lets the conversion fail
+            --  (boolbvt::convert_constant fails due to zero width)
             Set_Type (Ret, Make_Signedbv_Type (Ireps.Empty, Integer (W)));
          else
             raise Program_Error; -- unsupported

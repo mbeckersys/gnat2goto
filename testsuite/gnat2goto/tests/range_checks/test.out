@@ -6,80 +6,33 @@ Adding CPROVER library (x86_64)
 Removal of function pointers and virtual functions
 Partial Inlining
 Generic Property Instrumentation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Starting Bounded Model Checking
+size of program expression: 34 steps
+simple slicing removed 5 assignments
+Generated 10 VCC(s), 10 remaining after simplification
+Passing problem to propositional reduction
+converting SSA
+Running propositional reduction
+Post-processing
+Solving with MiniSAT 2.2.1 with simplifier
+193 variables, 0 clauses
+SAT checker: instance is SATISFIABLE
+Solving with MiniSAT 2.2.1 with simplifier
+193 variables, 0 clauses
+SAT checker inconsistent: instance is UNSATISFIABLE
+Runtime decision procedure: 0.007s
 
-_start /* _start */
-        // 0 
-        void return';
-        // 1 
-        return'=range_checks();
-        // 2 no location
-        dead return';
-        // 3 no location
-        END_FUNCTION
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+** Results:
+[overflow.1] overflow on bounded type conversion in (int)range_checks__add__b: FAILURE
+[overflow.2] overflow on bounded type conversion in (int)(range_checks__add__a + (int)range_checks__add__b): FAILURE
+[overflow.3] overflow on bounded type conversion in (int)range_checks__c: SUCCESS
+[overflow.4] overflow on bounded type conversion in (int)(range_checks__add__a + range_checks__add__b + (int)range_checks__c): FAILURE
+[overflow.5] overflow on bounded type conversion in (int)(range_checks__c + range_checks__c + (int)range_checks__c): FAILURE
+[overflow.6] overflow on bounded type conversion in (int)-5: FAILURE
+[overflow.7] overflow on bounded type conversion in (int)range_checks__n1: SUCCESS
+[overflow.8] overflow on bounded type conversion in (int)(range_checks__n1 + range_checks__n1 + (int)range_checks__n1): FAILURE
+[overflow.9] overflow on bounded type conversion in (int)1: SUCCESS
+[overflow.10] overflow on bounded type conversion in (int)(range_checks__n2 + (int)1): FAILURE
 
-range_checks__add /* range_checks__add */
-        // 4 file range_checks.adb line 10 column 7
-        int range_checks__add__ret;
-        // 5 
-        ASSERT range_checks__add__a + range_checks__add__b <= 20 && range_checks__add__a + range_checks__add__b >= 0 // overflow on bounded type conversion in (int)(range_checks__add__a + range_checks__add__b)
-        // 6 file range_checks.adb line 10 column 7
-        range_checks__add__ret = (int)(range_checks__add__a + range_checks__add__b);
-        // 7 file range_checks.adb line 11 column 7
-        int range_checks__add__ret2;
-        // 8 
-        ASSERT range_checks__add__a + range_checks__add__b + range_checks__c <= 20 && range_checks__add__a + range_checks__add__b + range_checks__c >= 0 // overflow on bounded type conversion in (int)(range_checks__add__a + range_checks__add__b + range_checks__c)
-        // 9 file range_checks.adb line 14 column 12
-        range_checks__add__ret2 = (int)(range_checks__add__a + range_checks__add__b + range_checks__c);
-        // 10 
-        ASSERT range_checks__c + range_checks__c + range_checks__c <= 20 && range_checks__c + range_checks__c + range_checks__c >= 0 // overflow on bounded type conversion in (int)(range_checks__c + range_checks__c + range_checks__c)
-        // 11 file range_checks.adb line 15 column 7
-        range_checks__add#return_value = (int)(range_checks__c + range_checks__c + range_checks__c);
-        // 12 file range_checks.adb line 15 column 7
-        dead range_checks__add__ret2;
-        // 13 file range_checks.adb line 15 column 7
-        dead range_checks__add__ret;
-        // 14 no location
-        END_FUNCTION
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-range_checks /* range_checks */
-        // 15 file range_checks.adb line 5 column 4
-        int range_checks__n1;
-        // 16 file range_checks.adb line 5 column 4
-        int range_checks__n2;
-        // 17 file range_checks.adb line 5 column 4
-        int range_checks__n;
-        // 18 file range_checks.adb line 7 column 4
-        int range_checks__c;
-        // 19 
-        ASSERT FALSE // overflow on bounded type conversion in (int)-5
-        // 20 file range_checks.adb line 7 column 4
-        range_checks__c = (int)-5;
-        // 21 file range_checks.adb line 19 column 7
-        range_checks__n1 = 10;
-        // 22 
-        ASSERT range_checks__n1 + range_checks__n1 + range_checks__n1 <= 20 && range_checks__n1 + range_checks__n1 + range_checks__n1 >= 0 // overflow on bounded type conversion in (int)(range_checks__n1 + range_checks__n1 + range_checks__n1)
-        // 23 file range_checks.adb line 20 column 7
-        range_checks__n2 = (int)(range_checks__n1 + range_checks__n1 + range_checks__n1);
-        // 24 
-        ASSERT range_checks__n2 + 1 <= 20 && range_checks__n2 + 1 >= 0 // overflow on bounded type conversion in (int)(range_checks__n2 + 1)
-        // 25 file range_checks.adb line 21 column 7
-        range_checks__n2 = (int)(range_checks__n2 + 1);
-        // 26 
-        range_checks__add(range_checks__n1, range_checks__n2);
-        // 27 
-        range_checks__n = range_checks__add#return_value;
-        // 28 
-        dead range_checks__add#return_value;
-        // 29 no location
-        dead range_checks__c;
-        // 30 no location
-        dead range_checks__n;
-        // 31 no location
-        dead range_checks__n2;
-        // 32 no location
-        dead range_checks__n1;
-        // 33 no location
-        END_FUNCTION
+** 7 of 10 failed (2 iterations)
+VERIFICATION FAILED
