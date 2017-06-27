@@ -73,6 +73,136 @@ package body Driver is
       Initial_Call      : constant Irep := New_Irep (I_Code_Function_Call);
       Initial_Call_Args : constant Irep := New_Irep (I_Argument_List);
 
+      procedure Parent_Map_JSON_Object is new
+        Gen_Map_JSON_Object (Mapped => JSON_Value);
+
+      --------------------
+      --  Inline_TypeRefs
+      --------------------
+
+      procedure Inline_TypeRefs (jsymtab : JSON_Array);
+      --  Removes all type indirections, i.e., those types that are
+      --  defined as symbol.
+
+      procedure Inline_TypeRefs (jsymtab : JSON_Array) is
+
+         ----------------
+         --  Is_Type_Def
+         ----------------
+
+         function Is_Type_Def (jentry : JSON_Value) return Boolean is
+           (jentry.Has_Field ("is_type") and then jentry.Get ("is_type"));
+
+         ----------------
+         --  Lookup_Type
+         ----------------
+
+         function Lookup_Type (id : String; jsymtab : JSON_Array)
+                            return JSON_Value with Pre => id'Length > 0;
+         --  Find type def for given indentifier in symbol table, and return
+         --  a copy of the "type" subtree
+
+         function Lookup_Type (id : String; jsymtab : JSON_Array)
+                            return JSON_Value is
+            val : JSON_Value;
+         begin
+            --  FIXME: slow linear search
+            Search_Loop :
+            for i in 1 .. Length (jsymtab) loop
+               declare
+                  tmp : constant JSON_Value := Get (jsymtab, i);
+               begin
+                  if Is_Type_Def (tmp) and then tmp.Get ("name") = id then
+                     val := tmp.Get ("type").Clone;
+                     exit Search_Loop;
+                  end if;
+               end;
+            end loop Search_Loop;
+            return val;
+         end Lookup_Type;
+
+         ----------------------
+         --  Do_TypeRef_Inline
+         ----------------------
+
+         procedure Do_TypeRef_Inline (val : in out JSON_Value;
+                                      jsymtab : JSON_Array) with
+           Pre => val.Has_Field ("type") and then
+           val.Get ("type").Has_Field ("id");
+         --  Replace potential Type Refs by a copy of type def
+
+         procedure Do_TypeRef_Inline (val : in out JSON_Value;
+                                      jsymtab : JSON_Array) is
+            Sym_Type  : constant JSON_Value := val.Get ("type");
+            Real_Type : JSON_Value;
+         begin
+            if Sym_Type.Get ("id") = "symbol" then
+               declare
+                  Real_ID : constant String :=
+                    Sym_Type.Get ("namedSub").Get ("identifier").Get ("id");
+               begin
+                  Real_Type := Lookup_Type (Real_ID, jsymtab);
+                  pragma Assert (not Real_Type.Is_Empty);
+               end;
+               --  val.Set_Field ("oldtype", val.Get ("type").Clone);
+               val.Unset_Field ("type");
+               val.Set_Field ("type", Real_Type);
+            end if;
+         end Do_TypeRef_Inline;
+
+         --------------
+         --  Do_Value
+         --------------
+
+         procedure Do_Value (Parent_Value : in out JSON_Value;
+                             Name : UTF8_String;
+                             Value : JSON_Value);
+         --  process one JSON value; recurse into children
+
+         procedure Do_Value (Parent_Value : in out JSON_Value;
+                             Name : UTF8_String;
+                             Value : JSON_Value) is
+            Next_Parent : JSON_Value := Value;
+         begin
+            --  recursion:
+            case Kind (Value) is
+
+            when JSON_Array_Type =>
+               declare
+                  Child_Array : constant JSON_Array := Get (Val => Value);
+                  Child_Value : JSON_Value;
+                  Array_Length : constant Natural := Length (Child_Array);
+               begin
+                  for J in 1 .. Array_Length loop
+                     Child_Value := Get (Child_Array, J);
+                     Do_Value (Next_Parent, "", Child_Value);
+                  end loop;
+               end;
+
+            when JSON_Object_Type =>
+               Parent_Map_JSON_Object (Val => Value,
+                                       CB  => Do_Value'Access,
+                                       User_Object => Next_Parent);
+            when others =>
+               null;
+            end case;
+
+            --  FIXME: what about return type?
+            if Name = "type" and then
+              not Parent_Value.Is_Empty and then
+              not Is_Type_Def (Parent_Value)
+            then
+               Do_TypeRef_Inline (Parent_Value, jsymtab);
+            end if;
+         end Do_Value;
+
+         Empty_Value : JSON_Value;
+      begin
+         for i in 1 .. Length (jsymtab) loop
+            Do_Value (Empty_Value, "", Get (jsymtab, i));
+         end loop;
+      end Inline_TypeRefs;
+
    begin
       --  Gather local symbols and put them in the symtab
       declare
@@ -192,7 +322,20 @@ package body Driver is
 
       Global_Symbol_Table.Insert (Start_Name, Start_Symbol);
 
-      Put_Line (Create (SymbolTable2Json (Global_Symbol_Table)).Write);
+      --  Workaround/MBe: we intervene before serialization and
+      --  remove the typerefs here (cbmc support missing). This
+      --  workaround can be removed once cbmc has support for this.
+      --  FIXME: might fail when multiple compilation units
+      --  are present, whereas A defines type and B uses it.
+      --  in such a case, we could only inline stuff after all units
+      --  have generated their JSON_Array
+      declare
+         jsymtab : constant JSON_Array :=
+           SymbolTable2Json (Global_Symbol_Table);
+      begin
+         Inline_TypeRefs (jsymtab);
+         Put_Line (Create (jsymtab).Write);
+      end;
    end Translate_Compilation_Unit;
 
    function Is_Back_End_Switch (Switch : String) return Boolean is
