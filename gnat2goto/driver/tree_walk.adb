@@ -111,6 +111,10 @@ package body Tree_Walk is
    with Pre  => Nkind (N) = N_Function_Call,
         Post => Kind (Do_Function_Call'Result) in Class_Expr;
 
+   function Make_Sym_Range_Expression (I : Irep) return Irep with
+     Pre => Kind (I) = I_Symbol_Expr,
+     Post => Kind (Make_Sym_Range_Expression'Result) in Class_Expr;
+
    function Do_Handled_Sequence_Of_Statements (N : Node_Id) return Irep
    with Pre  => Nkind (N) = N_Handled_Sequence_Of_Statements,
         Post => Kind (Do_Handled_Sequence_Of_Statements'Result) = I_Code_Block;
@@ -1179,6 +1183,46 @@ package body Tree_Walk is
          Do_Type_Declaration (New_Type, Etype (E));
       end if;
    end Do_Full_Type_Declaration;
+
+   -------------------------------
+   -- Make_Sym_Range_Expression --
+   -------------------------------
+
+   function Make_Sym_Range_Expression (I : Irep) return Irep is
+      Sym_Type : Irep := Get_Type (I);
+
+   begin
+      --  get underlying type
+      while Kind (Sym_Type) = I_Symbol_Type loop
+         Sym_Type := Follow_Symbol_Type
+           (Sym_Type, Global_Symbol_Table);
+      end loop;
+
+      if Kind (Sym_Type) = I_Bounded_Signedbv_Type then
+         declare
+            Op_Geq   : constant Irep := New_Irep (I_Op_Geq);
+            Op_Leq   : constant Irep := New_Irep (I_Op_Leq);
+         begin
+            Set_Lhs (Op_Geq, I);
+            Set_Rhs (Op_Geq, Get_Lower_Bound (Sym_Type));
+            Set_Type (Op_Geq, Make_Bool_Type);
+            Set_Lhs (Op_Leq, I);
+            Set_Rhs (Op_Leq, Get_Upper_Bound (Sym_Type));
+            Set_Type (Op_Leq, Make_Bool_Type);
+            return R : constant Irep := New_Irep (I_Op_And) do
+               Append_Op (R, Op_Geq);
+               Append_Op (R, Op_Leq);
+               Set_Type (R, Make_Bool_Type);
+               Set_Source_Location (R, Get_Source_Location (I));
+            end return;
+         end;
+      else
+         return R : constant Irep := New_Irep (I_Constant_Expr) do
+            Set_Value (R, "true");
+            Set_Type (R, Make_Bool_Type);
+         end return;
+      end if;
+   end Make_Sym_Range_Expression;
 
    ----------------------
    -- Do_Function_Call --
@@ -2517,20 +2561,74 @@ package body Tree_Walk is
    ----------------------------
 
    function Do_Subprogram_Or_Block (N : Node_Id) return Irep is
+
+      function Do_Assume_Param_Ranges (E : Entity_Id) return Irep with
+        Pre => Ekind (E) in E_Function | E_Procedure | E_Entry;
+
+      function Do_Assume_Param_Ranges (E : Entity_Id) return Irep is
+
+         function Make_Range_Assumption (E : Entity_Id) return Irep;
+         function Make_Range_Assumption (E : Entity_Id) return Irep is
+            P_Ent : constant Entity_Id := Etype (E);
+            Sym : constant Irep := Make_Symbol_Expr
+              (Source_Location => Sloc (E),
+               I_Type          => Do_Type_Reference (P_Ent),
+               Identifier      => Unique_Name (E));
+            Range_Exp : constant Irep := Make_Sym_Range_Expression (Sym);
+         begin
+            if Range_Exp /= Ireps.Empty then
+               return R : constant Irep := New_Irep (I_Code_Assume) do
+                  Set_Assumption (R, Range_Exp);
+                  Set_Source_Location (R, Sloc (E));
+               end return;
+            else
+               return Ireps.Empty;
+            end if;
+         end Make_Range_Assumption;
+
+         Cur_Formal : Entity_Id := First_Entity (E);
+      begin
+         return R : constant Irep := New_Irep (I_Code_Block) do
+            Set_Source_Location (R, Sloc (N));
+            while Present (Cur_Formal) loop
+               Append_Op (R, Make_Range_Assumption (Cur_Formal));
+               Cur_Formal := Next_Formal (Cur_Formal);
+            end loop;
+         end return;
+      end Do_Assume_Param_Ranges;
+
       Decls : constant List_Id := Declarations (N);
       HSS   : constant Node_Id := Handled_Statement_Sequence (N);
-      Decls_Rep : Irep;
-   begin
-      Decls_Rep := (if Present (Decls)
-                    then Process_Statements (Decls)
-                    else New_Irep (I_Code_Block));
+      Body_Ireps : constant Irep := New_Irep (I_Code_Block);
 
-      Set_Source_Location (Decls_Rep, Sloc (N));
-      if Present (HSS) then
-         Process_Statement (HSS, Decls_Rep);
+   begin
+      Set_Source_Location (Body_Ireps, Sloc (N));
+
+      --  assume ranges of formal parameters acc. to their types
+      if Nkind (N) in N_Subprogram_Body | N_Entry_Body and then
+        Present (Corresponding_Spec (N))
+      then
+         declare
+            Assume_Ireps : constant Irep :=
+              Do_Assume_Param_Ranges (Corresponding_Spec (N));
+         begin
+            if Assume_Ireps /= Ireps.Empty then
+               Append_Op (Body_Ireps, Assume_Ireps);
+            end if;
+         end;
       end if;
 
-      return Decls_Rep;
+      --  elaboration
+      if Present (Decls) then
+         Append_Op (Body_Ireps, Process_Statements (Decls));
+      end if;
+
+      --  body
+      if Present (HSS) then
+         Process_Statement (HSS, Body_Ireps);
+      end if;
+
+      return Body_Ireps;
    end Do_Subprogram_Or_Block;
 
    --------------------------------
