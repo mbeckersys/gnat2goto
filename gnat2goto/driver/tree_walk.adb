@@ -1270,9 +1270,9 @@ package body Tree_Walk is
    --  TODO: multi-dimensional arrays.
    function Do_Indexed_Component (N : Node_Id) return Irep is
       (Make_Array_Index_Op
-         (Do_Expression (Prefix (N)),
-          Etype (Prefix (N)),
-          Do_Expression (First (Expressions (N)))));
+         (Do_Expression (Prefix (N)), -- array name
+          Etype (Prefix (N)), -- type of elements
+          Do_Expression (First (Expressions (N))))); -- first=1st dim of array.
 
    ----------------------------
    -- Do_Itype_Array_Subtype --
@@ -1483,8 +1483,12 @@ package body Tree_Walk is
            Do_Type_Reference (Get_Array_Component_Type (E));
          Alloc : constant Irep :=
            Make_Side_Effect_Expr_Cpp_New_Array
-           (Size => Len, I_Type => Make_Pointer_Type (Component_Type),
-            Source_Location => Sloc (E));
+             (Size => Len, I_Type => Make_Pointer_Type (Component_Type),
+              Sizeof => Make_Integer_Constant
+                (Val => Integer
+                   (UI_To_Int (Esize (Get_Array_Component_Type (E)))) / 8,
+                 Ty => Get_Array_Component_Type (E)),
+              Source_Location => Sloc (E));
          Ret : constant Irep := New_Irep (I_Struct_Expr);
       begin
          Append_Struct_Member (Ret, Lbound);
@@ -1870,6 +1874,8 @@ package body Tree_Walk is
       --  Build the data array:
       Set_Subtype (New_Pointer_Type, Do_Type_Reference (New_Component_Type));
       Set_Size (New_Data_Expr, New_Length);
+      --  TODO: Set_Sizeof
+
       LHS_Copy :=
         Make_Copy (New_Data,
                    LHS_Node,
@@ -2829,6 +2835,10 @@ package body Tree_Walk is
 
          --  Create body (allocate and then call array_copy)
          Set_Size (Array_Alloc, Param_Symbol (Len_Arg));
+         Set_Sizeof (Array_Alloc,
+                     Make_Integer_Constant
+                       (Val => Integer (UI_To_Int (Esize (Element_Type))) / 8,
+                        Ty  => Element_Type));
          Set_Type (Array_Alloc, Ptr_Type);
          Append_Declare_And_Init (Array_Copy, Array_Alloc, Body_Block, 0);
          Append_Argument (Call_Args, Array_Copy);
@@ -2949,9 +2959,9 @@ package body Tree_Walk is
    function Make_Array_Index_Op
      (Base_Irep : Irep; Base_Type : Node_Id; Idx_Irep : Irep) return Irep
    is
-      First_Irep : constant Irep :=
-        Make_Array_First_Expr (Base_Type, Base_Irep);
-      Zero_Based_Index : constant Irep := New_Irep (I_Op_Sub);
+      --  First_Irep : constant Irep :=
+      --   Make_Array_First_Expr (Base_Type, Base_Irep);
+      --  Zero_Based_Index : constant Irep := New_Irep (I_Op_Sub);
       Result_Type : constant Irep :=
         Do_Type_Reference (Component_Type (Base_Type));
       Data : constant Irep := New_Irep (I_Member_Expr);
@@ -2963,6 +2973,7 @@ package body Tree_Walk is
       Set_Rhs (Zero_Based_Index, First_Irep);
       Set_Type (Zero_Based_Index, Get_Type (Idx_Irep));
       Set_Component_Name (Data, "data");
+      --  ??? what about component number?
       Set_Compound (Data, Base_Irep);
       Set_Subtype (Pointer_Type, Result_Type);
       Set_Type (Data, Pointer_Type);
