@@ -2562,10 +2562,11 @@ package body Tree_Walk is
 
    function Do_Subprogram_Or_Block (N : Node_Id) return Irep is
 
-      function Do_Assume_Param_Ranges (E : Entity_Id) return Irep with
-        Pre => Ekind (E) in E_Function | E_Procedure | E_Entry;
+      procedure Do_Assume_Param_Ranges (E : Entity_Id; Block : Irep) with
+        Pre => Ekind (E) in E_Function | E_Procedure | E_Entry and then
+               Kind (Block) = I_Code_Block;
 
-      function Do_Assume_Param_Ranges (E : Entity_Id) return Irep is
+      procedure Do_Assume_Param_Ranges (E : Entity_Id; Block : Irep) is
 
          function Make_Range_Assumption (E : Entity_Id) return Irep;
          function Make_Range_Assumption (E : Entity_Id) return Irep is
@@ -2588,47 +2589,44 @@ package body Tree_Walk is
 
          Cur_Formal : Entity_Id := First_Entity (E);
       begin
-         return R : constant Irep := New_Irep (I_Code_Block) do
-            Set_Source_Location (R, Sloc (N));
-            while Present (Cur_Formal) loop
-               Append_Op (R, Make_Range_Assumption (Cur_Formal));
-               Cur_Formal := Next_Formal (Cur_Formal);
-            end loop;
-         end return;
+         while Present (Cur_Formal) loop
+            Append_Op (Block, Make_Range_Assumption (Cur_Formal));
+            Cur_Formal := Next_Formal (Cur_Formal);
+         end loop;
       end Do_Assume_Param_Ranges;
 
       Decls : constant List_Id := Declarations (N);
       HSS   : constant Node_Id := Handled_Statement_Sequence (N);
-      Body_Ireps : constant Irep := New_Irep (I_Code_Block);
+      Wrapper : constant Irep := New_Irep (I_Code_Block);
+      Decls_And_Body : Irep;
 
    begin
-      Set_Source_Location (Body_Ireps, Sloc (N));
+      --  decls and body need to be in the same block/scope.
+      --  Since Process_Statements always returns a new one,
+      --  we use a wrapper to prepend the range assumptions
+      Set_Source_Location (Wrapper, Sloc (N));
 
       --  assume ranges of formal parameters acc. to their types
       if Nkind (N) in N_Subprogram_Body | N_Entry_Body and then
         Present (Corresponding_Spec (N))
       then
-         declare
-            Assume_Ireps : constant Irep :=
-              Do_Assume_Param_Ranges (Corresponding_Spec (N));
-         begin
-            if Assume_Ireps /= Ireps.Empty then
-               Append_Op (Body_Ireps, Assume_Ireps);
-            end if;
-         end;
+         Do_Assume_Param_Ranges (Corresponding_Spec (N), Wrapper);
       end if;
 
       --  elaboration
-      if Present (Decls) then
-         Append_Op (Body_Ireps, Process_Statements (Decls));
-      end if;
+      Decls_And_Body := (if Present (Decls)
+                         then Process_Statements (Decls)
+                         else New_Irep (I_Code_Block));
+      Set_Source_Location (Decls_And_Body, Sloc (N));
 
       --  body
       if Present (HSS) then
-         Process_Statement (HSS, Body_Ireps);
+         Process_Statement (HSS, Decls_And_Body);
       end if;
 
-      return Body_Ireps;
+      Append_Op (Wrapper, Decls_And_Body);
+
+      return Wrapper;
    end Do_Subprogram_Or_Block;
 
    --------------------------------
