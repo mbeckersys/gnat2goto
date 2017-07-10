@@ -1415,11 +1415,28 @@ package body Tree_Walk is
    ------------------------------
 
    function Do_Itype_Integer_Subtype (N : Entity_Id) return Irep is
-      (Make_Bounded_Signedbv_Type (
-         Lower_Bound => Do_Expression (Low_Bound (Scalar_Range (N))),
-         Upper_Bound => Do_Expression (High_Bound (Scalar_Range (N))),
-         Width => Positive (UI_To_Int (Esize (N))),
-         I_Subtype => Ireps.Empty));
+      W : constant Positive := Positive (UI_To_Int (Esize (N)));
+   begin
+      --  FIXME: some typedefs have symbolic bounds. THis happens, e.g.,
+      --  for loops. The typedef for j in the statement "for j in 1 .. n"
+      --  has High_Bound (Scalar_Range (N)) => "n" : N_Identifier
+      --  Of course, Set_Upper_Bound now fails. For now, we ignore these
+      --  compiler-generated symbolic bounds.
+      if Present (Scalar_Range (N)) and then
+        Nkind (Low_Bound (Scalar_Range (N))) = N_Integer_Literal and then
+        Nkind (High_Bound (Scalar_Range (N))) = N_Integer_Literal
+      then
+         return Make_Bounded_Signedbv_Type
+           (Lower_Bound => Do_Expression (Low_Bound (Scalar_Range (N))),
+            Upper_Bound => Do_Expression (High_Bound (Scalar_Range (N))),
+            Width => W,
+            I_Subtype => Ireps.Empty);
+      else
+         return Make_Signedbv_Type
+           (Width => W,
+            I_Subtype => Ireps.Empty);
+      end if;
+   end Do_Itype_Integer_Subtype;
 
    -----------------------------
    -- Do_Itype_Record_Subtype --
