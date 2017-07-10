@@ -373,13 +373,9 @@ package body Tree_Walk is
       --  TOCHECK: Parent type may be more than one step away?
    begin
       case Ekind (N_Type) is
-         when E_Array_Type =>
+         when E_Array_Type | E_Array_Subtype =>
             return Do_Aggregate_Literal_Array (N);
-         when E_Array_Subtype =>
-            return Do_Aggregate_Literal_Array (N);
-         when E_Record_Subtype =>
-            return Do_Aggregate_Literal_Record (N);
-         when E_Record_Type =>
+         when E_Record_Subtype | E_Record_Type =>
             return Do_Aggregate_Literal_Record (N);
          when others =>
             --  Unhandled aggregate kind
@@ -392,9 +388,11 @@ package body Tree_Walk is
    -- Do_Aggregate_Literal_Array --
    --------------------------------
 
+   --  Creates an array from a literal array expression. Get bounds
+   --  from literal expression, then create and fill an array struct.
    function Do_Aggregate_Literal_Array (N : Node_Id) return Irep is
       Result_Type : constant Irep := Do_Type_Reference (Etype (N));
-      Array_Expr : Irep;
+      Array_Expr : Irep; -- the literal expr will be put in here
       Result_Struct : constant Irep :=
         Make_Struct_Expr (I_Type => Result_Type,
                           Source_Location => Sloc (N));
@@ -452,6 +450,7 @@ package body Tree_Walk is
 
       Set_Type (Array_Expr, Bare_Array_Type);
 
+      --  walk through tree nodes of literal and build Array_Expr irep
       while Present (Pos_Iter) loop
          declare
             Expr : constant Irep := Do_Expression (Pos_Iter);
@@ -2680,6 +2679,8 @@ package body Tree_Walk is
    -- Get_Array_Copy_Function --
    -----------------------------
 
+   --  possibly creates and returns a Symbol_Expr of a function that
+   --  copies contents from one array to another.
    function Get_Array_Copy_Function (LHS_Element_Type : Entity_Id;
                                      RHS_Element_Type : Entity_Id;
                                      Index_Type : Entity_Id) return Irep is
@@ -2740,6 +2741,7 @@ package body Tree_Walk is
            (Counter_Sym, Make_Integer_Constant (0, Index_Type), Body_Block, 0);
 
          Set_Iter (Body_Loop, Make_Increment (Counter_Sym, Index_Type, 1));
+         Set_Type (Loop_Test, Make_Bool_Type); -- essential
          Set_Lhs (Loop_Test, Counter_Sym);
          Set_Rhs (Loop_Test, Param_Symbol (Len_Arg));
          Set_Cond (Body_Loop, Loop_Test);
@@ -2784,6 +2786,8 @@ package body Tree_Walk is
    -- Get_Array_Dup_Function --
    ----------------------------
 
+   --  possibly create and return a function (symbol expr) which duplicates
+   --  an array. That is, allocate memory and copy array contents.
    function Get_Array_Dup_Function (Element_Type : Entity_Id;
                                     Index_Type : Entity_Id) return Irep is
       Map_Key : constant Array_Dup_Key := (Element_Type, Index_Type);
@@ -2969,9 +2973,9 @@ package body Tree_Walk is
       Deref : constant Irep := New_Irep (I_Dereference_Expr);
       Pointer_Type : constant Irep := New_Irep (I_Pointer_Type);
    begin
-      Set_Lhs (Zero_Based_Index, Idx_Irep);
-      Set_Rhs (Zero_Based_Index, First_Irep);
-      Set_Type (Zero_Based_Index, Get_Type (Idx_Irep));
+      --  Set_Lhs (Zero_Based_Index, Idx_Irep);
+      --  Set_Rhs (Zero_Based_Index, First_Irep);
+      --  Set_Type (Zero_Based_Index, Get_Type (Idx_Irep));
       Set_Component_Name (Data, "data");
       --  ??? what about component number?
       Set_Compound (Data, Base_Irep);
