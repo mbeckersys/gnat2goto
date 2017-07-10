@@ -487,9 +487,11 @@ package body Tree_Walk is
       declare
          Dup : constant Irep :=
            Get_Array_Dup_Function (Element_Type_Ent, Index_Type_Node);
+         Dup_Type  : constant Irep := Get_Return_Type (Get_Type (Dup));
          Call_Args : constant Irep := New_Irep (I_Argument_List);
          Call_Expr : constant Irep :=
            Make_Side_Effect_Expr_Function_Call (I_Function => Dup,
+                                                I_Type => Dup_Type,
                                                 Arguments => Call_Args,
                                                 Source_Location => Sloc (N));
       begin
