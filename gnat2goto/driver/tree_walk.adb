@@ -3248,6 +3248,9 @@ package body Tree_Walk is
          when N_Subprogram_Body =>
             Do_Subprogram_Body (N);
 
+         when N_Block_Statement =>
+            Append_Op (Block, Do_Subprogram_Or_Block (N));
+
          when N_Null_Statement =>
             null;
 
