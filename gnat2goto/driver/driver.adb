@@ -236,6 +236,8 @@ package body Driver is
       end;
 
       --  Generate a simple _start function that calls the entry point
+      --  FIXME: should that be rather done in cbmc? For the other languages,
+      --  cbmc also allows the user to select the entry point and adds this.
       declare
          C : List_Cursor := List_First (Program_Args);
       begin
@@ -286,13 +288,13 @@ package body Driver is
       Set_Arguments (Initial_Call, Initial_Call_Args);
 
       --  Catch the call's return value if it has one
-      if Kind (Program_Return_Type) /= I_Empty then
+      if Kind (Program_Return_Type) not in I_Empty | I_Void_Type then
          declare
             Return_Symbol : Symbol;
 
             Return_Expr : constant Irep := New_Irep (I_Symbol_Expr);
             Return_Decl : constant Irep := New_Irep (I_Code_Decl);
-            Return_Id   : constant Symbol_Id := Intern ("return'");
+            Return_Id   : constant Symbol_Id := Intern ("__main_return'");
          begin
             Return_Symbol.Name       := Return_Id;
             Return_Symbol.BaseName   := Return_Id;
